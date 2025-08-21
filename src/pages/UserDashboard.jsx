@@ -207,7 +207,7 @@ function UserDashboard() {
                                         Durum: {p.project_status || "Yok"}
                                     </span>
                                     {Array.isArray(p.workers) && p.workers.length > 0 && (
-                                        <span style={{ fontSize: "0.9em", color: "#888", marginTop: "5px" }}>
+                                        <span style={{ fontSize: "0.9em", color: "#1a60a5ff", marginTop: "5px" }}>
                                             Çalışanlar: {p.workers.map(worker => worker.name).join(", ")}
                                         </span>
                                     )}

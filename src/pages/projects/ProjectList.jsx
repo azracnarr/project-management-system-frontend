@@ -1,9 +1,12 @@
 // src/pages/projects/ProjectList.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 import { useNavigate } from "react-router-dom";
-import ProjectForm from "./ProjectForm"; // ProjectForm'u import edin
+import { toast } from "react-toastify";
+import { confirmAlert } from 'react-confirm-alert'; // confirmAlert'ı import ediyoruz
+import 'react-confirm-alert/src/react-confirm-alert.css'; // Stil dosyasını import ediyoruz
+import ProjectForm from "./ProjectForm";
 
 function ProjectList() {
     const [projects, setProjects] = useState([]);
@@ -17,17 +20,27 @@ function ProjectList() {
     const [isListExpanded, setIsListExpanded] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
 
-    const fetchProjects = async () => {
+    const [currentPage, setCurrentPage] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [itemsPerPage] = useState(5);
+
+    const projectsListRef = useRef(null);
+
+    const fetchProjects = async (page = 0) => {
+        setLoading(true);
         try {
-            const response = await axios.get("http://localhost:8080/api/project/list", {
+            const response = await axios.get(`http://localhost:8080/api/project/list?page=${page}&size=${itemsPerPage}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
-            console.log("Gelen veri:", response.data);
-            setProjects(Array.isArray(response.data) ? response.data : []);
+            setProjects(response.data.content);
+            setTotalPages(response.data.totalPages);
+            setCurrentPage(response.data.number);
+
         } catch (err) {
             setError("Projeler alınamadı.");
             console.error("Projeleri çekerken hata:", err);
+            toast.error("❌ Projeler yüklenirken bir hata oluştu.");
         } finally {
             setLoading(false);
         }
@@ -35,6 +48,7 @@ function ProjectList() {
 
     useEffect(() => {
         if (!token) {
+            toast.error("Yetkilendirme tokenı bulunamadı.");
             navigate("/login");
             return;
         }
@@ -44,18 +58,24 @@ function ProjectList() {
             const roles = decodedToken.roles || [];
             const authorized = roles.some((r) => r === "PROJE_YONETICISI");
             if (!authorized) {
-                setError("Yetkiniz yok. Bu sayfaya erişim için 'PROJE_YONETICISI' rolü gereklidir.");
+                toast.error("❌ Yetkiniz yok. Bu sayfaya erişim için 'PROJE_YONETICISI' rolü gereklidir.");
                 setLoading(false);
                 return;
             }
-            fetchProjects();
+            fetchProjects(0);
         } catch (err) {
-            setError("Geçersiz veya süresi dolmuş token. Lütfen tekrar giriş yapın.");
+            toast.error("❌ Geçersiz veya süresi dolmuş token. Lütfen tekrar giriş yapın.");
             localStorage.clear();
             navigate("/login");
             setLoading(false);
         }
     }, [token, navigate]);
+
+    useEffect(() => {
+        if (isListExpanded && projectsListRef.current) {
+            projectsListRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, [projects, isListExpanded]);
 
     const handleSubmit = async (projectData) => {
         try {
@@ -63,47 +83,56 @@ function ProjectList() {
                 await axios.put(`http://localhost:8080/api/project/update/${projectData.id}`, projectData, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
-                alert('Proje başarıyla güncellendi!');
+                toast.success('✅ Proje başarıyla güncellendi!');
             } else {
                 await axios.post("http://localhost:8080/api/project/create", projectData, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
-                alert('Proje başarıyla eklendi!');
+                toast.success('✅ Proje başarıyla oluşturuldu!');
             }
-            fetchProjects();
+            fetchProjects(currentPage);
             setEditingProject(null);
             setIsListExpanded(true);
         } catch (err) {
             console.error("Ekleme/Güncelleme hatası:", err.response ? err.response.data : err.message);
-            alert('İşlem başarısız oldu.');
+            const errorMessage = err.response?.data?.message || 'İşlem başarısız oldu.';
+            toast.error(`❌ ${errorMessage}`);
         }
     };
 
-    const handleDelete = async (projectId) => {
-        if (!window.confirm("Bu projeyi silmek istediğinize emin misiniz?")) {
-            return;
-        }
-
-        try {
-            await axios.delete(`http://localhost:8080/api/project/delete/${projectId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
-            alert('Proje başarıyla silindi!');
-            fetchProjects();
-            setEditingProject(null);
-        } catch (err) {
-            console.error('Silme hatası:', err.response ? err.response.data : err.message);
-            if (err.response && (err.response.status === 401 || err.response.status === 403)) {
-                alert('Yetkiniz yok veya oturum süreniz doldu. Lütfen tekrar giriş yapın.');
-                localStorage.clear();
-                navigate("/login");
-            } else if (err.response && err.response.status === 404) {
-                alert('Silinecek proje bulunamadı.');
-            } else {
-                alert('Silme işlemi başarısız oldu.');
-            }
-        }
+    // GÜNCELLENDİ: confirmAlert kullanılan handleDelete fonksiyonu
+    const handleDelete = (projectId) => {
+        confirmAlert({
+            title: 'Projeyi Silme Onayı',
+            message: 'Bu projeyi kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+            buttons: [
+                {
+                    label: 'Evet',
+                    onClick: async () => {
+                        try {
+                            const response = await axios.delete(`http://localhost:8080/api/project/delete/${projectId}`, {
+                                headers: { Authorization: `Bearer ${token}` },
+                            });
+                            toast.success(response.data.message || '✅ Proje başarıyla silindi!');
+                            fetchProjects(currentPage);
+                            setEditingProject(null);
+                        } catch (err) {
+                            console.error('Silme hatası:', err.response ? err.response.data : err.message);
+                            const errorMessage = err.response?.data?.message || 'Silme işlemi başarısız oldu.';
+                            toast.error(`❌ ${errorMessage}`);
+                            if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+                                localStorage.clear();
+                                navigate("/login");
+                            }
+                        }
+                    }
+                },
+                {
+                    label: 'Hayır',
+                    onClick: () => toast.info('Silme işlemi iptal edildi.')
+                }
+            ]
+        });
     };
 
     const filteredProjects = (projects || []).filter(proj =>
@@ -138,10 +167,68 @@ function ProjectList() {
         );
     }
 
+    const renderPagination = () => {
+        if (totalPages <= 1) return null;
+
+        const pages = [...Array(totalPages).keys()];
+
+        return (
+            <div style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                marginTop: "2rem",
+                gap: "10px"
+            }}>
+                <button
+                    onClick={() => fetchProjects(currentPage - 1)}
+                    disabled={currentPage === 0}
+                    style={{
+                        padding: "10px 20px",
+                        border: "1px solid #ccc",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        backgroundColor: currentPage === 0 ? "#ddd" : "#fff",
+                    }}
+                >
+                    Önceki
+                </button>
+                {pages.map(page => (
+                    <button
+                        key={page}
+                        onClick={() => fetchProjects(page)}
+                        style={{
+                            padding: "10px",
+                            border: "1px solid #ccc",
+                            borderRadius: "8px",
+                            cursor: "pointer",
+                            fontWeight: currentPage === page ? "bold" : "normal",
+                            backgroundColor: currentPage === page ? "#3498db" : "#fff",
+                            color: currentPage === page ? "white" : "black",
+                        }}
+                    >
+                        {page + 1}
+                    </button>
+                ))}
+                <button
+                    onClick={() => fetchProjects(currentPage + 1)}
+                    disabled={currentPage === totalPages - 1}
+                    style={{
+                        padding: "10px 20px",
+                        border: "1px solid #ccc",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        backgroundColor: currentPage === totalPages - 1 ? "#ddd" : "#fff",
+                    }}
+                >
+                    Sonraki
+                </button>
+            </div>
+        );
+    };
+
     return (
         <div style={{ padding: "2rem", fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", backgroundColor: "#f0f2f5", minHeight: "100vh" }}>
-
-            {/* Yeni proje ekleme formu */}
             {!editingProject && (
                 <div style={{
                     marginBottom: "3rem",
@@ -149,17 +236,16 @@ function ProjectList() {
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
                     backgroundColor: "#fff",
-                    maxWidth: "800px", // Burası 800px olarak güncellendi
+                    maxWidth: "800px",
                     margin: "0 auto 3rem auto",
                 }}>
-                    <h2 style={{ color: "#2c3e50", textAlign: "center", marginBottom: "2rem", borderBottom: "2px solid #3498db", paddingBottom: "1rem" }}>
+                    <h2 style={{ color: "#2c3e50", textAlign: "center", marginBottom: "2rem", borderBottom: "2px solid #8a1270ff", paddingBottom: "1rem" }}>
                         ➕ Yeni Proje Ekle
                     </h2>
                     <ProjectForm onSubmit={handleSubmit} />
                 </div>
             )}
 
-            {/* Düzenleme formu */}
             {editingProject && (
                 <div style={{
                     marginBottom: "3rem",
@@ -167,32 +253,34 @@ function ProjectList() {
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
                     backgroundColor: "#fff",
-                    maxWidth: "800px", // Burası da 800px olarak güncellendi
+                    maxWidth: "800px",
                     margin: "0 auto 3rem auto",
                 }}>
-                    <h2 style={{ color: "#2c3e50", textAlign: "center", marginBottom: "2rem", borderBottom: "2px solid #27ae60", paddingBottom: "1rem" }}>
+                    <h2 style={{ color: "#2c3e50", textAlign: "center", marginBottom: "2rem", borderBottom: "2px solid #8a1270ff", paddingBottom: "1rem" }}>
                         ✏️ Proje Düzenle
                     </h2>
                     <ProjectForm
                         initialData={editingProject}
                         onSubmit={handleSubmit}
                         onCancel={() => setEditingProject(null)}
-                        onDelete={handleDelete}
+                        onDelete={handleDelete} // onDelete props'unu güncelledik
                     />
                 </div>
             )}
 
             <hr style={{ margin: "3rem 0", border: "none", borderTop: "1px dashed #ccc" }} />
 
-            {/* Mevcut Proje Listesi Bölümü */}
-            <div style={{
-                padding: "2rem",
-                borderRadius: "12px",
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
-                backgroundColor: "#fff",
-                maxWidth: "900px",
-                margin: "0 auto",
-            }}>
+            <div
+                ref={projectsListRef}
+                style={{
+                    padding: "2rem",
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+                    backgroundColor: "#fff",
+                    maxWidth: "900px",
+                    margin: "0 auto",
+                }}
+            >
                 <h2
                     onClick={() => setIsListExpanded(!isListExpanded)}
                     style={{
@@ -212,7 +300,6 @@ function ProjectList() {
 
                 {isListExpanded && (
                     <>
-                        {/* Arama Çubuğu */}
                         <div style={{ marginBottom: "2rem", textAlign: "center" }}>
                             <input
                                 type="text"
@@ -232,7 +319,6 @@ function ProjectList() {
                             />
                         </div>
 
-                        {/* Proje Listesi */}
                         {filteredProjects.length > 0 ? (
                             <ul style={{ listStyleType: "none", padding: 0 }}>
                                 {filteredProjects.map((proj) => (
@@ -252,14 +338,14 @@ function ProjectList() {
                                         }}
                                     >
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                            <span style={{ fontSize: "1.2em", fontWeight: "700", color: "#2c3e50" }}>
+                                            <span style={{ fontSize: "1.2em", fontWeight: "700", color: "#8a1270ff" }}>
                                                 {proj.name || "İsim yok"}
                                             </span>
                                             <button
                                                 onClick={() => setEditingProject(proj)}
                                                 style={{
                                                     padding: "8px 18px",
-                                                    backgroundColor: "#3498db",
+                                                    backgroundColor: "#8a1270ff",
                                                     color: "white",
                                                     border: "none",
                                                     borderRadius: "6px",
@@ -279,7 +365,7 @@ function ProjectList() {
                                             Durum: {proj.project_status || "Yok"}
                                         </span>
                                         {Array.isArray(proj.workers) && proj.workers.length > 0 && (
-                                            <span style={{ fontSize: "0.9em", color: "#7f8c8d", marginTop: "5px" }}>
+                                            <span style={{ fontSize: "0.9em", color: "#1a60a5ff", marginTop: "5px" }}>
                                                 Çalışanlar: {proj.workers.map(worker => worker.name).join(", ")}
                                             </span>
                                         )}
@@ -291,6 +377,8 @@ function ProjectList() {
                                 Aradığınız kriterlere uygun proje bulunmamaktadır.
                             </p>
                         )}
+
+                        {renderPagination()}
                     </>
                 )}
                 {!isListExpanded && (

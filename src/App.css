@@ -1,0 +1,61 @@
+/* ToastContainer ana stili */
+.Toastify__toast-container {
+    z-index: 9999 !important;
+}
+
+/* Genel toast stilleri */
+.Toastify__toast {
+    font-size: 1.3rem !important;
+    font-weight: 700 !important;
+    padding: 1.5rem !important;
+    border-radius: 12px !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3) !important;
+    color: white !important;
+    min-height: 64px !important;
+}
+
+/* Başarı mesajları */
+.Toastify__toast--success {
+    background: linear-gradient(45deg, #4caf50, #81c784) !important;
+}
+
+/* Hata mesajları */
+.Toastify__toast--error {
+    background: linear-gradient(45deg, #e53935, #ef5350) !important;
+}
+
+/* Uyarı mesajları */
+.Toastify__toast--warning {
+    background: linear-gradient(45deg, #ff9800, #ffb74d) !important;
+}
+
+/* Bilgi mesajları */
+.Toastify__toast--info {
+    background: linear-gradient(45deg, #2196f3, #64b5f6) !important;
+}
+
+/* Toast içeriği */
+.Toastify__toast-body {
+    color: white !important;
+    font-weight: 700 !important;
+}
+
+/* Kapatma butonu */
+.Toastify__close-button {
+    color: white !important;
+    opacity: 0.8 !important;
+}
+
+.Toastify__close-button:hover {
+    opacity: 1 !important;
+}
+
+/* Progress bar */
+.Toastify__progress-bar {
+    background: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* Custom toast class */
+.custom-toast {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}

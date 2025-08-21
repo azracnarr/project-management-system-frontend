@@ -1,9 +1,10 @@
-// src/pages/workers/WorkersList.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
+import { toast } from "react-toastify";
 import WorkerForm from "./WorkerForm";
+import { confirmAlert } from 'react-confirm-alert';
 
 function WorkersList() {
     const [workers, setWorkers] = useState([]);
@@ -17,15 +18,25 @@ function WorkersList() {
     const [isListExpanded, setIsListExpanded] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
 
-    const fetchWorkers = async () => {
+    const [currentPage, setCurrentPage] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [itemsPerPage] = useState(5);
+
+    const workersListRef = useRef(null);
+
+    const fetchWorkers = async (page = 0) => {
+        setLoading(true);
         try {
-            const response = await axios.get("http://localhost:8080/api/worker/list", {
+            const response = await axios.get(`http://localhost:8080/api/worker/list?page=${page}&size=${itemsPerPage}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            setWorkers(response.data);
+            setWorkers(response.data.content);
+            setTotalPages(response.data.totalPages);
+            setCurrentPage(response.data.number);
         } catch (err) {
             setError("Çalışanlar alınamadı.");
             console.error("Çalışanları çekerken hata:", err);
+            toast.error("❌ Çalışan listesi yüklenemedi. Sunucuya erişilemiyor.");
         } finally {
             setLoading(false);
         }
@@ -44,68 +55,90 @@ function WorkersList() {
             if (!authorized) {
                 setError("Yetkiniz yok. Bu sayfaya erişim için 'PROJE_YONETICISI' rolü gereklidir.");
                 setLoading(false);
+                toast.error("❌ Yetkisiz erişim. 'PROJE_YONETICISI' rolü gereklidir.");
                 return;
             }
-            fetchWorkers();
+            fetchWorkers(0);
         } catch (err) {
             setError("Geçersiz veya süresi dolmuş token. Lütfen tekrar giriş yapın.");
             localStorage.clear();
             navigate("/login");
             setLoading(false);
+            toast.error("❌ Oturum süresi doldu veya geçersiz token. Lütfen tekrar giriş yapın.");
         }
     }, [token, navigate]);
 
+    useEffect(() => {
+        if (isListExpanded && workersListRef.current) {
+            workersListRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, [workers, isListExpanded]);
+
     const handleSubmit = async (workerData) => {
         try {
-            if (workerData.id) {
-                await axios.put(`http://localhost:8080/api/worker/update/${workerData.id}`, workerData, {
+            if (workerData.worker_id) {
+                await axios.put(`http://localhost:8080/api/worker/update/${workerData.worker_id}`, workerData, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
-                alert('Çalışan başarıyla güncellendi!');
             } else {
                 await axios.post("http://localhost:8080/api/worker/create", workerData, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
-                alert('Çalışan başarıyla eklendi!');
             }
-            fetchWorkers();
+            fetchWorkers(currentPage);
             setEditingWorker(null);
             setIsListExpanded(true);
         } catch (err) {
-            console.error("Ekleme/Güncelleme hatası:", err.response ? err.response.data : err.message);
-            alert('İşlem başarısız oldu.');
+            console.error("Ekleme/Güncelleme hatası:", err);
+            const errorMessage = err.response?.data?.message || "İşlem başarısız oldu!";
+            toast.error(`❌ ${errorMessage}`);
         }
     };
 
-    const handleDelete = async (workerId) => {
-        if (!window.confirm("Bu çalışanı silmek istediğinize emin misiniz?")) {
+    const handleDeleteWorker = async (workerId) => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            toast.error('Oturum açma bilgileri bulunamadı');
             return;
         }
-        try {
-            await axios.delete(`http://localhost:8080/api/worker/delete/${workerId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            alert('Çalışan başarıyla silindi!');
-            fetchWorkers();
-            setEditingWorker(null);
-        } catch (err) {
-            console.error('Silme hatası:', err.response ? err.response.data : err.message);
-            if (err.response && (err.response.status === 401 || err.response.status === 403)) {
-                alert('Yetkiniz yok veya oturum süreniz doldu. Lütfen tekrar giriş yapın.');
-                localStorage.clear();
-                navigate("/login");
-            } else if (err.response && err.response.status === 404) {
-                alert('Silinecek çalışan bulunamadı.');
-            } else {
-                alert('Silme işlemi başarısız oldu.');
-            }
-        }
+
+        confirmAlert({
+            title: 'Çalışanı Silme Onayı',
+            message: 'Bu çalışanı kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+            buttons: [
+                {
+                    label: 'Evet',
+                    onClick: async () => {
+                        try {
+                            const response = await axios.delete(`http://localhost:8080/api/worker/delete/${workerId}`, {
+                                headers: { Authorization: `Bearer ${token}` }
+                            });
+                            toast.success(response.data.message || 'Çalışan başarıyla silindi');
+                            fetchWorkers(currentPage);
+                            setEditingWorker(null); // Silme sonrası formu kapat
+                        } catch (error) {
+                            console.error('Silme hatası:', error);
+                            const errorMessage = error.response?.data?.message || 'Silme işlemi başarısız oldu';
+                            toast.error(`❌ ${errorMessage}`);
+                            if (error.response?.status === 401 || error.response?.status === 403) {
+                                localStorage.clear();
+                                navigate('/login');
+                            }
+                        }
+                    }
+                },
+                {
+                    label: 'Hayır',
+                    onClick: () => toast.info('Silme işlemi iptal edildi')
+                }
+            ]
+        });
     };
 
     const filteredWorkers = workers.filter(worker =>
-        worker.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        worker.gender.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        worker.e_mail.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        worker?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        worker.gender?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (worker.worker_email?.toLowerCase().includes(searchTerm.toLowerCase()) || worker.e_mail?.toLowerCase().includes(searchTerm.toLowerCase())) ||
         String(worker.age).includes(searchTerm)
     );
 
@@ -127,6 +160,7 @@ function WorkersList() {
                         borderRadius: "5px",
                         cursor: "pointer",
                         fontSize: "1em",
+                        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
                     }}
                 >
                     Giriş Sayfasına Dön
@@ -135,10 +169,68 @@ function WorkersList() {
         );
     }
 
+    const renderPagination = () => {
+        if (totalPages <= 1) return null;
+
+        const pages = [...Array(totalPages).keys()];
+
+        return (
+            <div style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                marginTop: "2rem",
+                gap: "10px"
+            }}>
+                <button
+                    onClick={() => fetchWorkers(currentPage - 1)}
+                    disabled={currentPage === 0}
+                    style={{
+                        padding: "10px 20px",
+                        border: "1px solid #ccc",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        backgroundColor: currentPage === 0 ? "#ddd" : "#fff",
+                    }}
+                >
+                    Önceki
+                </button>
+                {pages.map(page => (
+                    <button
+                        key={page}
+                        onClick={() => fetchWorkers(page)}
+                        style={{
+                            padding: "10px",
+                            border: "1px solid #ccc",
+                            borderRadius: "8px",
+                            cursor: "pointer",
+                            fontWeight: currentPage === page ? "bold" : "normal",
+                            backgroundColor: currentPage === page ? "#3498db" : "#fff",
+                            color: currentPage === page ? "white" : "black",
+                        }}
+                    >
+                        {page + 1}
+                    </button>
+                ))}
+                <button
+                    onClick={() => fetchWorkers(currentPage + 1)}
+                    disabled={currentPage === totalPages - 1}
+                    style={{
+                        padding: "10px 20px",
+                        border: "1px solid #ccc",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        backgroundColor: currentPage === totalPages - 1 ? "#ddd" : "#fff",
+                    }}
+                >
+                    Sonraki
+                </button>
+            </div>
+        );
+    };
+
     return (
         <div style={{ padding: "2rem", fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", backgroundColor: "#f0f2f5", minHeight: "100vh" }}>
-
-            {/* Yeni çalışan ekleme formu */}
             {!editingWorker && (
                 <div style={{
                     marginBottom: "3rem",
@@ -146,17 +238,16 @@ function WorkersList() {
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
                     backgroundColor: "#fff",
-                    maxWidth: "800px", // Burası güncellendi
+                    maxWidth: "800px",
                     margin: "0 auto 3rem auto",
                 }}>
-                    <h2 style={{ color: "#2c3e50", textAlign: "center", marginBottom: "2rem", borderBottom: "2px solid #3498db", paddingBottom: "1rem" }}>
+                    <h2 style={{ color: "#2c3e50", textAlign: "center", marginBottom: "2rem", borderBottom: "2px solid #8a1270ff", paddingBottom: "1rem" }}>
                         ➕ Yeni Çalışan Ekle
                     </h2>
                     <WorkerForm onSubmit={handleSubmit} />
                 </div>
             )}
 
-            {/* Düzenleme formu */}
             {editingWorker && (
                 <div style={{
                     marginBottom: "3rem",
@@ -164,32 +255,34 @@ function WorkersList() {
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
                     backgroundColor: "#fff",
-                    maxWidth: "800px", // Burası da güncellendi
+                    maxWidth: "800px",
                     margin: "0 auto 3rem auto",
                 }}>
-                    <h2 style={{ color: "#2c3e50", textAlign: "center", marginBottom: "2rem", borderBottom: "2px solid #27ae60", paddingBottom: "1rem" }}>
+                    <h2 style={{ color: "#2c3e50", textAlign: "center", marginBottom: "2rem", borderBottom: "2px solid #8a1270ff", paddingBottom: "1rem" }}>
                         ✏️ Çalışan Düzenle
                     </h2>
                     <WorkerForm
                         initialData={editingWorker}
                         onSubmit={handleSubmit}
                         onCancel={() => setEditingWorker(null)}
-                        onDelete={handleDelete}
+                        onDelete={handleDeleteWorker}
                     />
                 </div>
             )}
 
             <hr style={{ margin: "3rem 0", border: "none", borderTop: "1px dashed #ccc" }} />
 
-            {/* Mevcut Çalışan Listesi Bölümü */}
-            <div style={{
-                padding: "2rem",
-                borderRadius: "12px",
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
-                backgroundColor: "#fff",
-                maxWidth: "900px",
-                margin: "0 auto",
-            }}>
+            <div
+                ref={workersListRef}
+                style={{
+                    padding: "2rem",
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.08)",
+                    backgroundColor: "#fff",
+                    maxWidth: "900px",
+                    margin: "0 auto",
+                }}
+            >
                 <h2
                     onClick={() => setIsListExpanded(!isListExpanded)}
                     style={{
@@ -209,11 +302,10 @@ function WorkersList() {
 
                 {isListExpanded && (
                     <>
-                        {/* Arama Çubuğu */}
                         <div style={{ marginBottom: "2rem", textAlign: "center" }}>
                             <input
                                 type="text"
-                                placeholder="Çalışan adı, yaşı veya cinsiyetine göre ara..."
+                                placeholder="Çalışan adı, yaşı, e-mail veya cinsiyetine göre ara..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 style={{
@@ -229,12 +321,11 @@ function WorkersList() {
                             />
                         </div>
 
-                        {/* Çalışan Listesi */}
                         {filteredWorkers.length > 0 ? (
                             <ul style={{ listStyleType: "none", padding: 0 }}>
                                 {filteredWorkers.map((worker) => (
                                     <li
-                                        key={worker.id}
+                                        key={worker.worker_id || worker.id}
                                         style={{
                                             background: "#ecf0f1",
                                             padding: "20px 25px",
@@ -244,19 +335,19 @@ function WorkersList() {
                                             flexDirection: "column",
                                             gap: "8px",
                                             boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-                                            borderLeft: `5px solid ${editingWorker && editingWorker.id === worker.id ? '#3498db' : '#27ae60'}`,
+                                            borderLeft: `5px solid ${editingWorker && (editingWorker.worker_id === worker.worker_id || editingWorker.id === worker.id) ? '#3498db' : '#27ae60'}`,
                                             transition: "all 0.3s ease",
                                         }}
                                     >
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                            <span style={{ fontSize: "1.2em", fontWeight: "700", color: "#2c3e50" }}>
+                                            <span style={{ fontSize: "1.2em", fontWeight: "700", color: "#8a1270ff" }}>
                                                 {worker.name || "İsim yok"}
                                             </span>
                                             <button
                                                 onClick={() => setEditingWorker(worker)}
                                                 style={{
                                                     padding: "8px 18px",
-                                                    backgroundColor: "#3498db",
+                                                    backgroundColor: "#8a1270ff",
                                                     color: "white",
                                                     border: "none",
                                                     borderRadius: "6px",
@@ -276,7 +367,7 @@ function WorkersList() {
                                             Cinsiyet: {worker.gender || "Yok"}
                                         </span>
                                         <span style={{ fontSize: "1em", color: "#555" }}>
-                                            E-mail: {worker.e_mail || "Yok"}
+                                            E-mail: {worker.worker_email || worker.e_mail || "Yok"}
                                         </span>
                                     </li>
                                 ))}
@@ -286,6 +377,7 @@ function WorkersList() {
                                 Aradığınız kriterlere uygun çalışan bulunmamaktadır.
                             </p>
                         )}
+                        {renderPagination()}
                     </>
                 )}
                 {!isListExpanded && (

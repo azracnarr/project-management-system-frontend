@@ -1,11 +1,15 @@
+import './App.css';
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 import Login from "./pages/Login";
 import AdminDashboard from "./pages/AdminDashboard";
 import UserDashboard from "./pages/UserDashboard";
 import ProjectList from "./pages/projects/ProjectList";
 import WorkersList from "./pages/workers/WorkersList";
+import ProjectAssignmentForm from "./pages/projects/ProjectAssigmentForm";
 
 // Rol bazlı koruma yapan özel route bileşeni
 function PrivateRoute({ children, role }) {
@@ -89,6 +93,14 @@ function App() {
             </PrivateRoute>
           }
         />
+        <Route
+          path="/project-assignment"
+          element={
+            <PrivateRoute role="PROJE_YONETICISI">
+              <ProjectAssignmentForm />
+            </PrivateRoute>
+          }
+        />
 
         {/* Kullanıcı paneli */}
         <Route
@@ -106,6 +118,21 @@ function App() {
         {/* Bilinmeyen tüm rotalar login'e yönlendirilsin */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
+
+      {/* ToastContainer'ı Routes'tan sonra koydum ve özel yapılandırma ekledim */}
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="colored"
+        toastClassName="custom-toast"
+      />
     </Router>
   );
 }

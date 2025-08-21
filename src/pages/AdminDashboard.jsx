@@ -74,7 +74,7 @@ function AdminDashboard() {
                     onClick={handleLogout}
                     style={{
                         padding: "10px 20px",
-                        backgroundColor: "#007bff",
+                        backgroundColor: "#5c1056ff",
                         color: "white",
                         border: "none",
                         borderRadius: "5px",
@@ -96,7 +96,7 @@ function AdminDashboard() {
                     onClick={handleLogout}
                     style={{
                         padding: "10px 20px",
-                        backgroundColor: "#dc3545",
+                        backgroundColor: "#b80d0dff",
                         color: "white",
                         border: "none",
                         borderRadius: "5px",
@@ -113,7 +113,7 @@ function AdminDashboard() {
                     onClick={() => setActiveAdminSection("projects")}
                     style={{
                         padding: "10px 20px",
-                        backgroundColor: activeAdminSection === "projects" ? "#007bff" : "#6c757d",
+                        backgroundColor: activeAdminSection === "projects" ? "#8a1270ff" : "#6c757d",
                         color: "white",
                         border: "none",
                         borderRadius: "5px",
@@ -127,7 +127,7 @@ function AdminDashboard() {
                     onClick={() => setActiveAdminSection("workers")}
                     style={{
                         padding: "10px 20px",
-                        backgroundColor: activeAdminSection === "workers" ? "#007bff" : "#6c757d",
+                        backgroundColor: activeAdminSection === "workers" ? "#8a1270ff" : "#6c757d",
                         color: "white",
                         border: "none",
                         borderRadius: "5px",
@@ -141,7 +141,7 @@ function AdminDashboard() {
                     onClick={() => setActiveAdminSection("assignProject")}
                     style={{
                         padding: "10px 20px",
-                        backgroundColor: activeAdminSection === "assignProject" ? "#007bff" : "#6c757d",
+                        backgroundColor: activeAdminSection === "assignProject" ? "#8a1270ff" : "#6c757d",
                         color: "white",
                         border: "none",
                         borderRadius: "5px",
